@@ -129,7 +129,7 @@ OBJC_EXTERN NSString * stepDefinitionLineForStep(CCIStep * step);
 
 - (void)beginExecution
 {
-    
+    [Cucumberish swizzleTestSuiteForTestCaseWithName];
     for(CCIFeature * feature in [[CCIFeaturesManager instance] features]){
         Class featureClass = [Cucumberish featureTestCaseClass:feature];
         [[CCIFeaturesManager instance] setClass:featureClass forFeature:feature];
@@ -257,6 +257,7 @@ OBJC_EXTERN NSString * stepDefinitionLineForStep(CCIStep * step);
 
 #pragma mark - Runtime hacks
 
+
 + (void)swizzleOrignalSelector:(SEL)originalSelector swizzledSelector:(SEL)swizzledSelector originalClass:(Class)originalClass targetClass:(Class)targetClass classMethod:(BOOL)classMethod
 {
     Class class = classMethod ? object_getClass((id)originalClass) : originalClass;
@@ -283,6 +284,12 @@ OBJC_EXTERN NSString * stepDefinitionLineForStep(CCIStep * step);
     }
 }
 
++ (void)swizzleTestSuiteForTestCaseWithName
+{
+    SEL originalSelector = @selector(testSuiteForTestCaseWithName:);
+    SEL swizzledSelector = @selector(cucumberish_testSuiteForTestCaseWithName:);
+    [Cucumberish swizzleOrignalSelector:originalSelector swizzledSelector:swizzledSelector originalClass:[XCTestSuite class] targetClass:[Cucumberish class] classMethod:YES];
+}
 
 + (void)swizzleFailureRecordingImplementationForClass:(Class)class
 {
@@ -384,7 +391,7 @@ OBJC_EXTERN NSString * stepDefinitionLineForStep(CCIStep * step);
     return featureClass;
 }
 
-+ (NSInvocation *)invocationForScenario:(CCIScenarioDefinition *)scenario feature:(CCIFeature *)feature featureClass:(Class)klass
++ (NSInvocation *)invocationForScenario:(CCIScenarioDefinition *)scenario feature:(CCIFeature *)feature featureClass:(Class)featureClass
 {
     NSString * methodName = scenario.name;
     
@@ -394,9 +401,9 @@ OBJC_EXTERN NSString * stepDefinitionLineForStep(CCIStep * step);
     SEL sel = NSSelectorFromString(methodName);
     
     //Prefered to forward the implementation to a C function instead of Objective-C method, to avoid confusion with the type of "self" object that is being to the implementation
-    class_addMethod(klass, sel, (IMP)executeScenario, [@"v@:@:@" UTF8String]);
+    class_addMethod(featureClass, sel, (IMP)executeScenario, [@"v@:@:@" UTF8String]);
     
-    NSMethodSignature *signature = [klass instanceMethodSignatureForSelector:sel];
+    NSMethodSignature *signature = [featureClass instanceMethodSignatureForSelector:sel];
     
     NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
     
@@ -409,10 +416,25 @@ OBJC_EXTERN NSString * stepDefinitionLineForStep(CCIStep * step);
     return invocation;
 }
 
++ (NSInvocation *)scenarioInvocationForScenarioName:(NSString *)name feature:(CCIFeature *)feature featureClass:(Class)featureClass
+{
+    
+}
 
 #pragma mark - Swizzled methods
 
++ (XCTestSuite *)cucumberish_testSuiteForTestCaseWithName:(NSString *)name
+{
+    NSString * testCaseName = [[name componentsSeparatedByString:@"/"] firstObject];
+    NSString * methodName = [[name componentsSeparatedByString:@"/"] lastObject];
+    SEL selector = NSSelectorFromString(methodName);
+    Class testCaseCalss = NSClassFromString(testCaseName);
+    XCTestCase * case1 = [XCTestCase testCaseWithSelector:selector];
+    XCTestSuite * suite = [[XCTestSuite alloc] init];
+    [suite addTest:case1];
 
+    return suite;
+}
 + (nullable XCTestCase *)cucumberish_testCaseWithSelector:(SEL)selector
 {
     CCIFeature * feature = [[CCIFeaturesManager instance] getFeatureForClass:[self class]];
